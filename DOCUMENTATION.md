@@ -545,7 +545,9 @@ tpl.replace_media("templates/dummy_pic.png", "new_pic.png")
 
 ---
 
-## 12. Получение списка переменных шаблона (`get_undeclared_template_variables`)
+## 12. Получение списка переменных, валидация шаблона и проверка полноты контекста
+
+### Получение переменных шаблона (`get_undeclared_template_variables`)
 
 Чтобы узнать, какие переменные используются в шаблоне (включая тело, колонтитулы, сноски и свойства документа) или каких переменных не хватает в переданном контексте:
 
@@ -559,9 +561,61 @@ all_vars = tpl.get_undeclared_template_variables()
 missing_vars = tpl.get_undeclared_template_variables(context=context_dict)
 ```
 
+### Предварительная валидация синтаксиса шаблона (`validate_template`, `is_template_valid`)
+
+Если нужно проверить сложный многостраничный шаблон на синтаксические ошибки Jinja2 во всех его частях (тело документа, колонтитулы, сноски, примечания, свойства) без остановки на первой ошибке:
+
+```python
+tpl = DocxTemplate("contract_template.docx")
+
+if not tpl.is_template_valid():
+    for err in tpl.validate_template():
+        print(f"Ошибка в части {err.part_name} (строка {err.lineno}): {err.message}")
+        print("Контекст абзацев:", err.context_lines)
+```
+
+Если вызвать `tpl.validate_template(raise_on_error=True)`, при наличии ошибок будет выброшено исключение `TemplateError` со сводкой по всем найденным проблемам.
+
+### Комплексная проверка полноты контекста (`check_context`)
+
+Метод `tpl.check_context(context)` проверяет одновременно синтаксис шаблона и сопоставляет переменные шаблона с ключами словаря `context`, возвращая объект `ContextCheckResult`:
+
+```python
+report = tpl.check_context(context)
+
+if not report.is_valid:
+    print("Не хватает переменных в context:", report.missing)
+    print("Ошибки синтаксиса шаблона:", report.syntax_errors)
+
+print("Переданы в context, но не используются в шаблоне:", report.unused)
+print("Все переменные, требуемые шаблоном:", report.required)
+```
+
+К полям `ContextCheckResult` можно обращаться как через атрибуты (`report.missing`, `report.unused`), так и как к словарю (`report["missing"]`, `report["unused"]`).
+
 ---
 
-## 13. Многократный рендеринг одного шаблона
+## 13. Автоматический пересчёт полей и оглавления при открытии в Word (`update_fields_on_open`)
+
+Когда в шаблоне есть оглавление (`TOC`), перекрёстные ссылки (`REF`), нумерация страниц (`PAGE` / `NUMPAGES`), формулы таблиц (`=SUM(ABOVE)`) или поля `DOCPROPERTY`, вы можете включить автоматическое обновление всех полей при открытии документа в Microsoft Word (прописывает `<w:updateFields w:val="true"/>` в `word/settings.xml`):
+
+```python
+tpl = DocxTemplate("report_with_toc.docx")
+
+# Способ 1: вызвать метод до или после рендеринга
+tpl.update_fields_on_open(True)
+tpl.render(context)
+
+# Способ 2: передать параметр update_fields=True напрямую в render() или render_async()
+tpl.render(context, update_fields=True)
+tpl.save("report_ready.docx")
+```
+
+Проверить текущее состояние настройки можно методом `tpl.get_update_fields_on_open()`.
+
+---
+
+## 14. Многократный рендеринг одного шаблона
 
 Вы можете создать экземпляр `DocxTemplate` один раз и вызывать `render(context)` и `save(...)` в цикле для генерации множества документов. Если на каждой итерации используются разные вызовы `replace_pic()`, `replace_media()` или `replace_zipname()`, вызывайте `tpl.reset_replacements()` в начале итерации.
 

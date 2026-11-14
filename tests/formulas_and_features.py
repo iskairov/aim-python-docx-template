@@ -155,14 +155,40 @@ def test_all_features() -> None:
         "project_code": "2026",
     }
 
+    # Проверяем валидацию шаблона и проверку полноты контекста до рендеринга
+    assert tpl.is_template_valid()
+    assert tpl.validate_template() == []
+
+    incomplete_report = tpl.check_context({"mass_1": 10, "extra_unused": 123})
+    assert not incomplete_report.is_valid
+    assert not bool(incomplete_report)
+    assert "acc" in incomplete_report.missing
+    assert "project_code" in incomplete_report["missing"]
+    assert "extra_unused" in incomplete_report.unused
+
+    full_report = tpl.check_context(context)
+    assert full_report.is_valid
+    assert bool(full_report)
+    assert len(full_report.missing) == 0
+    assert len(full_report.unused) == 0
+
+    # Проверяем включение автообновления полей при открытии в Word (<w:updateFields w:val="true"/>)
+    assert not tpl.get_update_fields_on_open()
+    tpl.update_fields_on_open(True)
+    assert tpl.get_update_fields_on_open()
+
     # Проверяем асинхронный рендеринг и сохранение (Issue #611)
     out_stream = io.BytesIO()
-    for coro in (tpl.render_async(context), tpl.save_async(out_stream)):
+    for coro in (tpl.render_async(context, update_fields=True), tpl.save_async(out_stream)):
         try:
             coro.send(None)
         except StopIteration:
             pass
     tpl.save("output/formulas_and_features.docx")
+
+    # Проверяем, что настройка updateFields сохранилась в выходном файле
+    reloaded_tpl = DocxTemplate("output/formulas_and_features.docx")
+    assert reloaded_tpl.get_update_fields_on_open()
 
     # Проверяем содержимое сгенерированного документа
     out_xml = tpl.get_xml()
@@ -175,6 +201,23 @@ def test_all_features() -> None:
     assert "Абзац из поддокумента в памяти" in out_xml
     assert "АИМ-2026" in out_xml
     assert tpl.custom_properties["Проект"] == "АИМ-2026"
+
+    # Проверяем обнаружение синтаксических ошибок в нескольких частях шаблона через validate_template()
+    broken_doc = Document()
+    broken_doc.add_paragraph("Корректный абзац {{ ok_var }}")
+    broken_doc.add_paragraph("Ошибочный абзац {% if unclosed %}")
+    broken_buf = io.BytesIO()
+    broken_doc.save(broken_buf)
+    broken_buf.seek(0)
+
+    broken_tpl = DocxTemplate(broken_buf)
+    broken_tpl.set_custom_property("БитоеСвойство", "{{ bad_expr + }}")
+    assert not broken_tpl.is_template_valid()
+    val_errors = broken_tpl.validate_template()
+    assert len(val_errors) == 2
+    error_parts = {e.part_name for e in val_errors}
+    assert "body" in error_parts
+    assert "custom_properties.БитоеСвойство" in error_parts
 
     # Проверяем защиту SandboxedEnvironment от SSTI (Issue #644)
     evil_doc = Document()

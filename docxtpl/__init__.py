@@ -12,10 +12,11 @@ from .listing import Listing
 from .properties import CustomProperties
 from .richtext import R, RP, RichText, RichTextParagraph
 from .subdoc import Subdoc
-from .template import DocxTemplate
+from .template import ContextCheckResult, DocxTemplate, TemplateValidationError
 
 __all__ = [
     "__version__",
+    "ContextCheckResult",
     "CustomProperties",
     "DocxTemplate",
     "InlineImage",
@@ -25,4 +26,5 @@ __all__ = [
     "RichText",
     "RichTextParagraph",
     "Subdoc",
+    "TemplateValidationError",
 ]

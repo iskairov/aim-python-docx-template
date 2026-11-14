@@ -44,6 +44,212 @@ if TYPE_CHECKING:
     from .subdoc import Subdoc
 
 
+class TemplateValidationError:
+    """ Информация об ошибке синтаксиса Jinja2 или структуры XML в части шаблона. """
+
+    def __init__(
+        self,
+        part_name: str,
+        message: str,
+        lineno: int | None = None,
+        context_lines: list[str] | None = None,
+    ) -> None:
+        """
+        Инициализация информации об ошибке валидации шаблона.
+
+        :param part_name: Название части документа (например, 'body', 'header (rId1)', 'footnotes').
+        :param message: Текст сообщения об ошибке синтаксиса Jinja2.
+        :param lineno: Номер строки (абзаца) в XML-представлении части документа.
+        :param context_lines: Список строк текста соседних абзацев вокруг места ошибки.
+        """
+
+        self._part_name = part_name
+        self._message = message
+        self._lineno = lineno
+        self._context_lines = list(context_lines or [])
+
+    @property
+    def part_name(self) -> str:
+        """ Название части документа, в которой обнаружена ошибка. """
+
+        return self._part_name
+
+    @property
+    def message(self) -> str:
+        """ Текст описания синтаксической ошибки Jinja2. """
+
+        return self._message
+
+    @property
+    def lineno(self) -> int | None:
+        """ Номер строки (абзаца) в XML-части документа или None. """
+
+        return self._lineno
+
+    @property
+    def context_lines(self) -> list[str]:
+        """ Список текстовых строк абзацев вокруг обнаруженной ошибки. """
+
+        return self._context_lines
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Преобразует объект ошибки валидации в словарь.
+
+        :return: Словарь с ключами 'part_name', 'message', 'lineno', 'context_lines'.
+        """
+
+        return {
+            "part_name": self._part_name,
+            "message": self._message,
+            "lineno": self._lineno,
+            "context_lines": list(self._context_lines),
+        }
+
+    def __repr__(self) -> str:
+        """
+        Возвращает строковое представление ошибки для отладки.
+
+        :return: Строка с частью документа, номером строки и текстом ошибки.
+        """
+
+        loc = f"{self._part_name}:{self._lineno}" if self._lineno is not None else self._part_name
+        return f"TemplateValidationError({loc!r}, {self._message!r})"
+
+    def __str__(self) -> str:
+        """
+        Формирует человекочитаемое описание ошибки с контекстом абзацев.
+
+        :return: Отформатированная строка описания ошибки.
+        """
+
+        loc = f"{self._part_name} (строка {self._lineno})" if self._lineno is not None else self._part_name
+        ctx = "\n  ".join(self._context_lines)
+        if ctx:
+            return f"[{loc}] {self._message}\n  Контекст:\n  {ctx}"
+        return f"[{loc}] {self._message}"
+
+
+class ContextCheckResult:
+    """ Результат проверки полноты контекста и валидности шаблона перед рендерингом. """
+
+    def __init__(
+        self,
+        required: set[str],
+        provided: set[str],
+        syntax_errors: list[TemplateValidationError] | None = None,
+    ) -> None:
+        """
+        Инициализация отчёта о проверке контекста шаблона.
+
+        :param required: Множество всех переменных, ожидаемых шаблоном.
+        :param provided: Множество ключей, переданных в словаре контекста.
+        :param syntax_errors: Список синтаксических ошибок шаблона, если они были найдены.
+        """
+
+        self._required = set(required)
+        self._provided = set(provided)
+        self._missing = self._required - self._provided
+        self._unused = self._provided - self._required
+        self._syntax_errors = list(syntax_errors or [])
+
+    @property
+    def required(self) -> set[str]:
+        """ Множество всех переменных, используемых в шаблоне документа. """
+
+        return self._required
+
+    @property
+    def provided(self) -> set[str]:
+        """ Множество ключей, переданных в проверяемом словаре контекста. """
+
+        return self._provided
+
+    @property
+    def missing(self) -> set[str]:
+        """ Множество переменных, которые есть в шаблоне, но отсутствуют в контексте. """
+
+        return self._missing
+
+    @property
+    def undeclared(self) -> set[str]:
+        """ Псевдоним свойства missing (необъявленные переменные шаблона). """
+
+        return self._missing
+
+    @property
+    def unused(self) -> set[str]:
+        """ Множество ключей контекста, которые нигде не задействованы в шаблоне. """
+
+        return self._unused
+
+    @property
+    def syntax_errors(self) -> list[TemplateValidationError]:
+        """ Список синтаксических ошибок, обнаруженных в шаблоне. """
+
+        return self._syntax_errors
+
+    @property
+    def is_valid(self) -> bool:
+        """ Признак полной готовности к рендерингу (нет пропущенных переменных и нет ошибок синтаксиса). """
+
+        return len(self._missing) == 0 and len(self._syntax_errors) == 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Возвращает результаты проверки в виде обычного словаря Python.
+
+        :return: Словарь с ключами 'is_valid', 'required', 'provided', 'missing', 'unused', 'syntax_errors'.
+        """
+
+        return {
+            "is_valid": self.is_valid,
+            "required": set(self._required),
+            "provided": set(self._provided),
+            "missing": set(self._missing),
+            "undeclared": set(self._missing),
+            "unused": set(self._unused),
+            "syntax_errors": list(self._syntax_errors),
+        }
+
+    def __getitem__(self, key: str) -> Any:
+        """
+        Позволяет обращаться к полям результата проверки как к ключам словаря.
+
+        :param key: Имя поля ('is_valid', 'required', 'provided', 'missing', 'undeclared', 'unused', 'syntax_errors').
+
+        :return: Значение соответствующего свойства.
+        """
+
+        data = self.to_dict()
+        if key not in data:
+            raise KeyError(key)
+        return data[key]
+
+    def __bool__(self) -> bool:
+        """
+        Позволяет использовать объект напрямую в логических выражениях if.
+
+        :return: True, если контекст полон и шаблон не содержит синтаксических ошибок.
+        """
+
+        return self.is_valid
+
+    def __repr__(self) -> str:
+        """
+        Возвращает строковое представление результата проверки контекста.
+
+        :return: Строка со сводкой по полям is_valid, missing, unused и syntax_errors.
+        """
+
+        return (
+            f"ContextCheckResult(is_valid={self.is_valid}, "
+            f"missing={sorted(self._missing)}, "
+            f"unused={sorted(self._unused)}, "
+            f"syntax_errors={len(self._syntax_errors)})"
+        )
+
+
 class DocxTemplate:
     """ Класс для работы с файлами .docx как с шаблонами Jinja2. """
 
@@ -89,6 +295,7 @@ class DocxTemplate:
         self.pic_map: dict[str, Any] = {}
         self.current_rendering_part: Any = None
         self.docx_ids_index = 1000
+        self._update_fields_on_open = False
 
     def init_docx(self, reload: bool = True) -> None:
         """
@@ -106,6 +313,8 @@ class DocxTemplate:
             self.docx = Document(self.template_file)
             self._custom_properties = None
             self.is_rendered = False
+            if self._update_fields_on_open:
+                self._apply_update_fields_setting(True)
 
     def render_init(self) -> None:
         """
@@ -240,6 +449,58 @@ class DocxTemplate:
             "app": self.get_app_properties(),
             "custom": self.get_custom_properties(),
         }
+
+    def _apply_update_fields_setting(self, enabled: bool) -> None:
+        """
+        Добавляет или удаляет элемент <w:updateFields w:val="true"/> в настройках документа (word/settings.xml).
+
+        :param enabled: Включить (True) или отключить (False) автообновление полей при открытии в Word.
+        """
+
+        if self.docx is None:
+            return
+        settings_el = self.docx.settings.element
+        w_ns = docx.oxml.ns.nsmap["w"]
+        tag = f"{{{w_ns}}}updateFields"
+        val_attr = f"{{{w_ns}}}val"
+        existing = settings_el.find(tag)
+
+        if enabled:
+            if existing is None:
+                existing = etree.SubElement(settings_el, tag)
+            existing.set(val_attr, "true")
+        else:
+            if existing is not None:
+                settings_el.remove(existing)
+
+    def update_fields_on_open(self, enabled: bool = True) -> None:
+        """
+        Управляет автоматическим пересчётом всех полей документа (оглавления TOC, нумерации страниц,
+        перекрёстных ссылок REF, вычисляемых формул таблиц и DOCPROPERTY) при открытии файла в Microsoft Word.
+
+        :param enabled: Если True — прописывает <w:updateFields w:val="true"/> в word/settings.xml.
+        """
+
+        self._update_fields_on_open = enabled
+        self.init_docx(reload=False)
+        self._apply_update_fields_setting(enabled)
+
+    def get_update_fields_on_open(self) -> bool:
+        """
+        Проверяет, включён ли автоматический пересчёт полей (<w:updateFields>) в настройках документа.
+
+        :return: True, если автообновление полей при открытии активно, иначе False.
+        """
+
+        self.init_docx(reload=False)
+        assert self.docx is not None
+        settings_el = self.docx.settings.element
+        w_ns = docx.oxml.ns.nsmap["w"]
+        existing = settings_el.find(f"{{{w_ns}}}updateFields")
+        if existing is None:
+            return False
+        val = existing.get(f"{{{w_ns}}}val", "true").strip().lower()
+        return val in ("true", "1", "on")
 
     def xml_to_string(self, xml: etree._Element, encoding: str = "unicode") -> str:
         """
@@ -1053,6 +1314,7 @@ class DocxTemplate:
         jinja_env: Environment | None = None,
         autoescape: bool = False,
         sandbox: bool | None = None,
+        update_fields: bool = False,
     ) -> None:
         """
         Выполняет полный рендеринг шаблона документа (тело, таблицы, колонтитулы, свойства, сноски).
@@ -1061,9 +1323,12 @@ class DocxTemplate:
         :param jinja_env: Опциональное пользовательское окружение Jinja2.
         :param autoescape: Автоматически экранировать спецсимволы XML в переменных контекста.
         :param sandbox: Использовать ли песочницу SandboxedEnvironment (если None — используется self.sandbox).
+        :param update_fields: Включить ли автоматический пересчёт полей (TOC, PAGE, REF, DOCPROPERTY) при открытии документа в Word.
         """
 
         self.render_init()
+        if update_fields or self._update_fields_on_open:
+            self._apply_update_fields_setting(True)
 
         env = self._get_or_create_jinja_env(
             jinja_env=jinja_env,
@@ -1110,6 +1375,7 @@ class DocxTemplate:
         jinja_env: Environment | None = None,
         autoescape: bool = False,
         sandbox: bool | None = None,
+        update_fields: bool = False,
     ) -> None:
         """
         Асинхронный метод для рендеринга шаблона в корутинах asyncio (Issue #611).
@@ -1118,6 +1384,7 @@ class DocxTemplate:
         :param jinja_env: Опциональное пользовательское окружение Jinja2.
         :param autoescape: Автоматически экранировать спецсимволы XML в переменных контекста.
         :param sandbox: Использовать ли песочницу SandboxedEnvironment.
+        :param update_fields: Включить ли автоматический пересчёт полей при открытии документа в Word.
         """
 
         self.render(
@@ -1125,6 +1392,7 @@ class DocxTemplate:
             jinja_env=jinja_env,
             autoescape=autoescape,
             sandbox=sandbox,
+            update_fields=update_fields,
         )
 
     def fix_tables(self, xml: str) -> etree._Element:
@@ -1713,14 +1981,26 @@ class DocxTemplate:
             val_str = getattr(temp_doc.core_properties, prop, "")
             if val_str and ("{{" in val_str or "{%" in val_str):
                 xml += val_str
+            if self.docx is not None and not self.is_rendered:
+                cur_val = getattr(self.docx.core_properties, prop, "")
+                if cur_val and cur_val != val_str and ("{{" in cur_val or "{%" in cur_val):
+                    xml += cur_val
 
         for val_str in get_app_properties_dict(temp_doc).values():
             if val_str and ("{{" in val_str or "{%" in val_str):
                 xml += val_str
+        if self.docx is not None and not self.is_rendered:
+            for val_str in get_app_properties_dict(self.docx).values():
+                if val_str and ("{{" in val_str or "{%" in val_str):
+                    xml += val_str
 
         for val_any in CustomProperties(temp_doc).values():
             if isinstance(val_any, str) and ("{{" in val_any or "{%" in val_any):
                 xml += val_any
+        if self._custom_properties is not None and not self.is_rendered:
+            for val_any in self._custom_properties.values():
+                if isinstance(val_any, str) and ("{{" in val_any or "{%" in val_any):
+                    xml += val_any
 
         env = self._get_or_create_jinja_env(jinja_env=jinja_env)
 
@@ -1732,3 +2012,202 @@ class DocxTemplate:
             return all_variables - provided_variables
 
         return all_variables
+
+    def _collect_template_parts_for_inspection(self) -> list[tuple[str, str, bool]]:
+        """
+        Собирает все части шаблона для синтаксической проверки и поиска переменных.
+
+        :return: Список кортежей (имя_части, строка_содержимого, является_ли_xml).
+        """
+
+        if hasattr(self.template_file, "seek"):
+            try:
+                self.template_file.seek(0)  # type: ignore[union-attr]
+            except Exception:
+                pass
+        temp_doc = Document(self.template_file)
+        parts: list[tuple[str, str, bool]] = []
+
+        # 1. Основное тело документа
+        body_xml = self.xml_to_string(temp_doc._element.body)
+        parts.append(("body", self.patch_xml(body_xml), True))
+
+        # 2. Верхние и нижние колонтитулы
+        for label, uri in (("header", self.HEADER_URI), ("footer", self.FOOTER_URI)):
+            for rel_key, val in temp_doc._part.rels.items():
+                if (val.reltype == uri) and (val.target_part.blob):
+                    part_xml = self.xml_to_string(parse_xml(val.target_part.blob))
+                    parts.append((f"{label} ({rel_key})", self.patch_xml(part_xml), True))
+
+        # 3. Сноски, концевые сноски и примечания
+        if temp_doc.part.package is not None:
+            type_labels = {
+                self.FOOTNOTES_CONTENT_TYPE: "footnotes",
+                self.ENDNOTES_CONTENT_TYPE: "endnotes",
+                self.COMMENTS_CONTENT_TYPE: "comments",
+            }
+            seen_partnames: set[str] = set()
+            for part in temp_doc.part.package.parts:
+                partname = str(getattr(part, "partname", id(part)))
+                if partname in seen_partnames:
+                    continue
+                if part.content_type in type_labels and part.blob:
+                    seen_partnames.add(partname)
+                    raw_xml = (
+                        part.blob.decode("utf-8")
+                        if isinstance(part.blob, bytes)
+                        else part.blob
+                    )
+                    parts.append((type_labels[part.content_type], self.patch_xml(raw_xml), True))
+
+        # 4. Стандартные свойства Core (из шаблона + установленные до рендеринга)
+        core_sources = [temp_doc]
+        if self.docx is not None and not self.is_rendered:
+            core_sources.append(self.docx)
+        seen_core: set[tuple[str, str]] = set()
+        for src_doc in core_sources:
+            for prop in CORE_STRING_PROPERTIES:
+                val_str = getattr(src_doc.core_properties, prop, "")
+                if val_str and ("{{" in val_str or "{%" in val_str) and (prop, val_str) not in seen_core:
+                    seen_core.add((prop, val_str))
+                    parts.append((f"core_properties.{prop}", val_str, False))
+
+        # 5. Расширенные свойства App
+        seen_app: set[tuple[str, str]] = set()
+        for src_doc in core_sources:
+            for key, val_str in get_app_properties_dict(src_doc).items():
+                if val_str and ("{{" in val_str or "{%" in val_str) and (key, val_str) not in seen_app:
+                    seen_app.add((key, val_str))
+                    parts.append((f"app_properties.{key}", val_str, False))
+
+        # 6. Пользовательские свойства Custom
+        seen_custom: set[tuple[str, str]] = set()
+        custom_dicts = [CustomProperties(temp_doc).to_dict()]
+        if self._custom_properties is not None and not self.is_rendered:
+            custom_dicts.append(self._custom_properties.to_dict())
+        for cdict in custom_dicts:
+            for key, val_any in cdict.items():
+                if isinstance(val_any, str) and ("{{" in val_any or "{%" in val_any) and (key, val_any) not in seen_custom:
+                    seen_custom.add((key, val_any))
+                    parts.append((f"custom_properties.{key}", val_any, False))
+
+        return parts
+
+    @staticmethod
+    def _extract_error_context_lines(src_xml: str, lineno: int | None, is_xml: bool) -> list[str]:
+        """
+        Извлекает читаемые текстовые строки абзацев вокруг строки с синтаксической ошибкой Jinja2.
+
+        :param src_xml: Подготовленная строка шаблона (XML или текст свойства).
+        :param lineno: Номер строки ошибки из исключения TemplateError.
+        :param is_xml: Признак того, что строка является XML-документом Word.
+
+        :return: Список очищенных от XML-тегов строк контекста.
+        """
+
+        if not is_xml:
+            return [src_xml.strip()] if src_xml.strip() else []
+        if lineno is None:
+            return []
+        lines = src_xml.splitlines()
+        line_idx = max(0, lineno - 1)
+        window = lines[max(0, line_idx - 2) : min(len(lines), line_idx + 3)]
+        return [
+            re.sub(r"<[^>]+>", "", line).strip()
+            for line in window
+            if re.sub(r"<[^>]+>", "", line).strip()
+        ]
+
+    def validate_template(
+        self,
+        jinja_env: Environment | None = None,
+        raise_on_error: bool = False,
+    ) -> list[TemplateValidationError]:
+        """
+        Проверяет синтаксис всех частей шаблона (тело документа, верхние и нижние колонтитулы,
+        сноски, примечания и свойства документа) без остановки на первой ошибке.
+
+        :param jinja_env: Пользовательское окружение Jinja2 или None.
+        :param raise_on_error: Если True — выбрасывает исключение TemplateError при наличии ошибок.
+
+        :return: Список объектов TemplateValidationError (пустой список, если шаблон корректен).
+        """
+
+        env = self._get_or_create_jinja_env(jinja_env=jinja_env)
+        errors: list[TemplateValidationError] = []
+
+        for part_name, content, is_xml in self._collect_template_parts_for_inspection():
+            prepared = re.sub(r"<w:p([ >])", r"\n<w:p\1", content) if is_xml else content
+            try:
+                env.parse(prepared)
+            except TemplateError as err:
+                lineno = getattr(err, "lineno", None)
+                ctx_lines = self._extract_error_context_lines(prepared, lineno, is_xml)
+                errors.append(
+                    TemplateValidationError(
+                        part_name=part_name,
+                        message=str(err.message if hasattr(err, "message") and err.message else err),
+                        lineno=lineno,
+                        context_lines=ctx_lines,
+                    )
+                )
+
+        if raise_on_error and errors:
+            combined_msg = "\n\n".join(str(e) for e in errors)
+            raise TemplateError(combined_msg)
+
+        return errors
+
+    def is_template_valid(self, jinja_env: Environment | None = None) -> bool:
+        """
+        Быстро проверяет, не содержит ли шаблон синтаксических ошибок Jinja2.
+
+        :param jinja_env: Пользовательское окружение Jinja2 или None.
+
+        :return: True, если все части шаблона синтаксически корректны, иначе False.
+        """
+
+        return len(self.validate_template(jinja_env=jinja_env)) == 0
+
+    def check_context(
+        self,
+        context: dict[str, Any],
+        jinja_env: Environment | None = None,
+    ) -> ContextCheckResult:
+        """
+        Проверяет полноту словаря контекста и синтаксическую корректность шаблона перед рендерингом.
+        Возвращает отчёт со списками недостающих переменных (missing), неиспользуемых ключей (unused),
+        всех требуемых переменных (required) и синтаксических ошибок (syntax_errors).
+
+        :param context: Словарь переменных контекста, который планируется передать в render().
+        :param jinja_env: Пользовательское окружение Jinja2 или None.
+
+        :return: Экземпляр ContextCheckResult с детальной информацией о проверке.
+        """
+
+        env = self._get_or_create_jinja_env(jinja_env=jinja_env)
+        required_vars: set[str] = set()
+        syntax_errors: list[TemplateValidationError] = []
+
+        for part_name, content, is_xml in self._collect_template_parts_for_inspection():
+            prepared = re.sub(r"<w:p([ >])", r"\n<w:p\1", content) if is_xml else content
+            try:
+                ast = env.parse(prepared)
+                required_vars |= meta.find_undeclared_variables(ast)
+            except TemplateError as err:
+                lineno = getattr(err, "lineno", None)
+                ctx_lines = self._extract_error_context_lines(prepared, lineno, is_xml)
+                syntax_errors.append(
+                    TemplateValidationError(
+                        part_name=part_name,
+                        message=str(err.message if hasattr(err, "message") and err.message else err),
+                        lineno=lineno,
+                        context_lines=ctx_lines,
+                    )
+                )
+
+        return ContextCheckResult(
+            required=required_vars,
+            provided=set(context.keys()),
+            syntax_errors=syntax_errors,
+        )

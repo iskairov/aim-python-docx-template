@@ -253,13 +253,28 @@ RichTextParagraph
 * ``tpl.replace_embedded("embedded_dummy.docx", "embedded_docx_i_want.docx")`` — замена встроенного документа по CRC32.
 * ``tpl.replace_zipname("word/embeddings/Feuille_Microsoft_Office_Excel1.xlsx", "my_excel_file.xlsx")`` — замена файла внутри ZIP-структуры ``.docx``.
 
-Получение переменных шаблона
-----------------------------
+Получение переменных, валидация шаблона и проверка контекста
+------------------------------------------------------------
 
-Для получения списка всех переменных шаблона (или недостающих в контексте переменных)::
+Для получения списка всех переменных шаблона, проверки синтаксиса всех частей документа и проверки полноты контекста перед рендерингом::
 
    tpl = DocxTemplate("your_template.docx")
    set_of_variables = tpl.get_undeclared_template_variables(context=context_dict)
+
+   # Проверка синтаксиса шаблона без остановки на первой ошибке:
+   errors = tpl.validate_template()
+
+   # Полный отчёт о контексте (missing, unused, required, syntax_errors, is_valid):
+   report = tpl.check_context(context_dict)
+
+Автоматический пересчёт полей и оглавления при открытии в Word
+--------------------------------------------------------------
+
+Для автоматического пересчёта оглавления (``TOC``), формул таблиц и всех полей при открытии файла в MS Word (``<w:updateFields w:val="true"/>`` в ``word/settings.xml``)::
+
+   tpl.update_fields_on_open(True)
+   # или напрямую при вызове render:
+   tpl.render(context, update_fields=True)
 
 Безопасность (SandboxedEnvironment) и Asyncio
 ---------------------------------------------
