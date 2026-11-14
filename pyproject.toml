@@ -1,17 +1,15 @@
 [project]
 name = "docxtpl"
 dynamic = ["version"]
-description = "Python docx template engine"
-authors = [{name="Eric Lapouyade", email="elapouya@proton.me"}]
+description = "Шаблонизатор документов Microsoft Word (.docx) на базе Python и Jinja2"
+authors = [{name = "Eric Lapouyade", email = "elapouya@proton.me"}]
 readme = "README.rst"
-requires-python = ">=3.7"
-license = {text="LGPL-2.1-only"}
-classifiers=[
+requires-python = ">=3.9"
+license = {text = "LGPL-2.1-only"}
+classifiers = [
     "Intended Audience :: Developers",
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -19,9 +17,9 @@ classifiers=[
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-keywords = ["jinja2"]
+keywords = ["jinja2", "docx", "word", "template", "openxml"]
 dependencies = [
-    "python-docx",
+    "python-docx>=1.1.1",
     "jinja2",
     "lxml",
 ]
@@ -40,20 +38,7 @@ dev = [
 [project.urls]
 homepage = "https://github.com/elapouya/python-docx-template"
 repository = "https://github.com/elapouya/python-docx-template.git"
-document = "https://docxtpl.readthedocs.org"
-
-[tool.poetry]
-version = "0.0.0"
-
-[tool.poetry.requires-plugins]
-poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
-
-[tool.poetry-dynamic-versioning]
-enable = true
-
-[tool.poetry-dynamic-versioning.from-file]
-source = "docxtpl/__init__.py"
-pattern = '__version__ = "(.+)"'
+documentation = "https://docxtpl.readthedocs.io/en/latest/"
 
 [tool.mypy]
 pretty = true
@@ -67,7 +52,7 @@ module = ["docxcompose.*"]
 ignore_missing_imports = true
 
 [tool.pdm]
-version = {source="file", path="docxtpl/__init__.py"}
+version = {source = "file", path = "docxtpl/__init__.py"}
 
 [build-system]
 requires = ["pdm-backend"]

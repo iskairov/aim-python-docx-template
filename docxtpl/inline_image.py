@@ -1,78 +1,126 @@
 # -*- coding: utf-8 -*-
 """
-Created : 2021-07-30
-
-@author: Eric Lapouyade
+Модуль для генерации встраиваемых изображений (InlineImage) внутри шаблонов Word.
 """
+from __future__ import annotations
+
+from os import PathLike
+from typing import TYPE_CHECKING, Any, IO
+
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+if TYPE_CHECKING:
+    from docx.shared import Length
+    from .template import DocxTemplate
 
-class InlineImage(object):
-    """Class to generate an inline image
 
-    This is much faster than using Subdoc class.
-    """
+class InlineImage:
+    """ Класс для быстрой генерации встраиваемых в текст изображений без использования Subdoc. """
 
-    tpl = None
-    image_descriptor = None
-    width = None
-    height = None
-    anchor = None
-    title = None
-    descr = None
+    tpl: DocxTemplate | None = None
+    image_descriptor: str | PathLike[str] | IO[bytes] | None = None
+    width: Length | int | None = None
+    height: Length | int | None = None
+    anchor: str | None = None
+    title: str | None = None
+    descr: str | None = None
 
     def __init__(
         self,
-        tpl,
-        image_descriptor,
-        width=None,
-        height=None,
-        anchor=None,
-        title=None,
-        descr=None,
-    ):
+        tpl: DocxTemplate,
+        image_descriptor: str | PathLike[str] | IO[bytes],
+        width: Length | int | None = None,
+        height: Length | int | None = None,
+        anchor: str | None = None,
+        title: str | None = None,
+        descr: str | None = None,
+    ) -> None:
+        """
+        Инициализация встраиваемого изображения.
+
+        :param tpl: Экземпляр текущего шаблона DocxTemplate.
+        :param image_descriptor: Путь к файлу изображения или файлоподобный поток (BytesIO).
+        :param width: Ширина изображения (например, Mm(20), Inches(1), Pt(50)).
+        :param height: Высота изображения (например, Mm(10), Inches(1), Pt(50)).
+        :param anchor: URL-адрес для создания гиперссылки при клике на изображение.
+        :param title: Заголовок изображения (атрибут title в свойствах объекта Word).
+        :param descr: Описание / замещающий текст (alt text) изображения.
+        """
+
         self.tpl, self.image_descriptor = tpl, image_descriptor
         self.width, self.height = width, height
         self.anchor = anchor
         self.title = str(title) if title is not None else None
         self.descr = str(descr) if descr is not None else None
 
-    def _add_hyperlink(self, run, url, part):
-        # Create a relationship for the hyperlink
+    def _add_hyperlink(self, run: Any, url: str, part: Any) -> Any:
+        """
+        Добавляет гиперссылку на графический элемент изображения.
+
+        :param run: XML-элемент встраиваемого рисунка (<wp:inline>).
+        :param url: Целевой URL гиперссылки.
+        :param part: Текущая рендерящаяся часть документа для регистрации связи.
+
+        :return: Модифицированный XML-элемент рисунка с гиперссылкой.
+        """
+
+        # Создаём внешнюю связь для гиперссылки в текущей части документа
         r_id = part.relate_to(
             url,
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
             is_external=True,
         )
 
-        # Find the <wp:docPr> and <pic:cNvPr> element
-        docPr = run.xpath(".//wp:docPr")[0]
-        cNvPr = run.xpath(".//pic:cNvPr")[0]
+        # Находим элементы <wp:docPr> и <pic:cNvPr> для привязки клика по ссылке
+        doc_pr = run.xpath(".//wp:docPr")[0]
+        cnv_pr = run.xpath(".//pic:cNvPr")[0]
 
-        # Create the <a:hlinkClick> element
-        hlinkClick1 = OxmlElement("a:hlinkClick")
-        hlinkClick1.set(qn("r:id"), r_id)
-        hlinkClick2 = OxmlElement("a:hlinkClick")
-        hlinkClick2.set(qn("r:id"), r_id)
+        # Создаём элементы <a:hlinkClick> с идентификатором созданной связи
+        hlink_click1 = OxmlElement("a:hlinkClick")
+        hlink_click1.set(qn("r:id"), r_id)
+        hlink_click2 = OxmlElement("a:hlinkClick")
+        hlink_click2.set(qn("r:id"), r_id)
 
-        # Insert the <a:hlinkClick> element right after the <wp:docPr> element
-        docPr.append(hlinkClick1)
-        cNvPr.append(hlinkClick2)
+        # Вставляем элементы гиперссылки внутрь свойств объекта и рисунка
+        doc_pr.append(hlink_click1)
+        cnv_pr.append(hlink_click2)
 
         return run
 
-    def _set_doc_properties(self, run):
-        docPr = run.xpath(".//wp:docPr")[0]
-        cNvPr = run.xpath(".//pic:cNvPr")[0]
+    def _set_doc_properties(self, run: Any) -> None:
+        """
+        Устанавливает заголовок (title) и описание (descr) в XML-элементах изображения.
 
-        for elt in (docPr, cNvPr):
+        :param run: XML-элемент рисунка (<wp:inline>).
+        """
+
+        doc_pr = run.xpath(".//wp:docPr")[0]
+        cnv_pr = run.xpath(".//pic:cNvPr")[0]
+
+        for elt in (doc_pr, cnv_pr):
             if self.title is not None:
                 elt.set("title", self.title)
             if self.descr is not None:
                 elt.set("descr", self.descr)
 
-    def _insert_image(self):
+    def _insert_image(self) -> str:
+        """
+        Формирует XML-разметку для вставки изображения внутрь текущего текстового прогона.
+
+        :return: Строка XML, закрывающая текущий <w:t>/<w:r>, вставляющая <w:drawing> и открывающая новый <w:r><w:t>.
+        """
+
+        if self.tpl is None or self.tpl.current_rendering_part is None:
+            raise RuntimeError("Невозможно вставить изображение вне контекста рендеринга шаблона DocxTemplate.")
+
+        # Если image_descriptor — поток BytesIO, сбрасываем указатель чтения в начало при повторном рендеринге
+        if hasattr(self.image_descriptor, "seek"):
+            try:
+                self.image_descriptor.seek(0)  # type: ignore[union-attr]
+            except Exception:
+                pass
+
         pic = self.tpl.current_rendering_part.new_pic_inline(
             self.image_descriptor,
             self.width,
@@ -85,18 +133,36 @@ class InlineImage(object):
                 pic = self._add_hyperlink(
                     pic, self.anchor, self.tpl.current_rendering_part
                 )
-        pic = pic.xml
+        pic_xml = pic.xml
 
         return (
-            "</w:t></w:r><w:r><w:drawing>%s</w:drawing></w:r><w:r>"
-            '<w:t xml:space="preserve">' % pic
+            f"</w:t></w:r><w:r><w:drawing>{pic_xml}</w:drawing></w:r><w:r>"
+            '<w:t xml:space="preserve">'
         )
 
-    def __unicode__(self):
+    def __unicode__(self) -> str:
+        """
+        Возвращает XML-разметку изображения (для обратной совместимости).
+
+        :return: XML-строка со встроенным изображением.
+        """
+
         return self._insert_image()
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковую XML-разметку изображения.
+
+        :return: XML-строка со встроенным изображением.
+        """
+
         return self._insert_image()
 
-    def __html__(self):
+    def __html__(self) -> str:
+        """
+        Возвращает XML-разметку изображения как безопасную строку при включённом autoescape в Jinja2.
+
+        :return: XML-строка со встроенным изображением.
+        """
+
         return self._insert_image()

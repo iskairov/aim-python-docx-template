@@ -2,37 +2,52 @@
 python-docx-template
 ====================
 
-Use a docx as a jinja2 template
+Генерация документов Microsoft Word (``.docx``) по шаблонам Jinja2
+==================================================================
 
-Introduction
-------------
+Введение
+--------
 
-This package uses 2 major packages :
+Библиотека **python-docx-template** (``docxtpl``) объединяет возможности двух основных пакетов:
 
-- `python-docx <https://github.com/python-openxml/python-docx>`_ for reading, writing and creating sub documents
-- `jinja2 <https://github.com/pallets/jinja>`_ for managing tags inserted into the template docx
+- `python-docx <https://github.com/python-openxml/python-docx>`_ — для чтения, записи и программного формирования документов и поддокументов Word;
+- `jinja2 <https://github.com/pallets/jinja>`_ — для обработки шаблонных тегов, циклов, условий и фильтров, вставленных непосредственно в документ ``.docx``.
 
-python-docx-template has been created because python-docx is powerful for creating documents but not for modifying them.
+Пакет ``python-docx`` отлично подходит для создания документов с нуля, но неудобен для модификации готовых сложных бланков и шаблонов.
+Идея ``python-docx-template`` заключается в том, чтобы создать макет будущего документа прямо в Microsoft Word (или LibreOffice Writer) со сколь угодно сложным оформлением: таблицами, формулами, оглавлением, изображениями, верхними и нижними колонтитулами, сносками и пользовательскими свойствами, а затем прямо в тексте документа разместить теги синтаксиса Jinja2.
+После сохранения макета в формате ``.docx`` вы можете генерировать на его основе любое количество готовых документов, передавая словарь данных (контекст) из Python.
 
-The idea is to begin to create an example of the document you want to generate with microsoft word, it can be as complex as you want :
-pictures, index tables, footer, header, variables, anything you can do with word.
-Then, as you are still editing the document with microsoft word, you insert jinja2-like tags directly in the document.
-You save the document as a .docx file (xml format) : it will be your .docx template file.
+Ключевые возможности
+--------------------
 
-Now you can use python-docx-template to generate as many word documents you want from this .docx template and context variables you will associate.
+- Подстановка переменных ``{{ var }}``, условий ``{% if ... %}`` и циклов ``{% for ... %}`` в тексте, таблицах, колонтитулах, сносками и примечаниях.
+- Управление целыми абзацами (``{%p ... %}``), строками таблиц (``{%tr ... %}``), столбцами таблиц (``{%tc ... %}``), текстовыми прогонами (``{%r ... %}``) и математическими прогонами (``{%m ... %}``).
+- **Полная поддержка математических формул Word (OMML)**: автоматическая склейка разорванных тегов внутри формул ``<m:oMath>``, разворачивание скобок ``<m:d>`` и восстановление имён переменных с нижним подчёркиванием ``my_var``.
+- **Работа со всеми свойствами документа**: чтение, изменение и шаблонизация стандартных свойств (``docProps/core.xml``), расширенных свойств приложения (``docProps/app.xml``) и **пользовательских (кастомных) свойств Word** (``docProps/custom.xml``) с автоматическим обновлением полей ``DOCPROPERTY`` в тексте документа.
+- Динамическое форматирование текста (``RichText`` / ``R``) и абзацев (``RichTextParagraph`` / ``RP``), вставка гиперссылок, списков (``Listing``), изображений (``InlineImage``) и вложенных поддокументов (``Subdoc``) без обязательной зависимости от ``docxcompose``.
+- Безопасный режим рендеринга в песочнице Jinja2 (``sandbox=True``) для защиты от SSTI и поддержка асинхронного рендеринга (``render_async``, ``save_async``).
 
-
-Documentation
+Быстрый старт
 -------------
 
-Please, `read the doc <http://docxtpl.readthedocs.org>`_
+.. code-block:: python
 
-Other projects
---------------
+    from docxtpl import DocxTemplate
 
-If you like python-docx-template, please have a look at some of my other projects :
+    doc = DocxTemplate("my_word_template.docx")
+    context = {"company_name": "ООО «Мировая Компания»"}
+    doc.render(context)
+    doc.save("generated_doc.docx")
 
-- `django-listing <https://github.com/elapouya/django-listing>`_ : A listing/table library on steroid for Djano
-- `python-textops3 <https://github.com/elapouya/python-textops3>`_ : Chainable text operations
-- `django-robohash-svg <https://github.com/elapouya/django-robohash-svg>`_ : Create svg robots avatars
+Документация
+------------
 
+- Полная русскоязычная документация в репозитории: ``DOCUMENTATION.md`` и ``docs/index.rst``
+- Оригинальная онлайн-документация: `docxtpl.readthedocs.io <https://docxtpl.readthedocs.io/en/latest/>`_
+
+Другие проекты автора оригинала
+-------------------------------
+
+- `django-listing <https://github.com/elapouya/django-listing>`_ : Библиотека таблиц и списков для Django
+- `python-textops3 <https://github.com/elapouya/python-textops3>`_ : Цепочки операций обработки текста
+- `django-robohash-svg <https://github.com/elapouya/django-robohash-svg>`_ : Генерация SVG-аватаров роботов
